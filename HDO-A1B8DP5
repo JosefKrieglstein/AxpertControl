@@ -1,0 +1,15 @@
+#
+# VT->NT
+45 16 * * 1,2,3,4,5     root    /usr/bin/python /usr/local/bin/HDO-NT.py > /dev/null
+30 22 * * 1,2,3,4,5     root    /usr/bin/python /usr/local/bin/HDO-NT.py > /dev/null
+45 02 * * 0,6           root    /usr/bin/python /usr/local/bin/HDO-NT.py > /dev/null
+05 15 * * 0,6           root    /usr/bin/python /usr/local/bin/HDO-NT.py > /dev/null
+40 22 * * 0,6           root    /usr/bin/python /usr/local/bin/HDO-NT.py > /dev/null
+
+
+# NT->VT
+15 18 * * 1,2,3,4,5     root    /usr/bin/python /usr/local/bin/HDO-VT.py > /dev/null
+00 04 * * 1,2,3,4,5     root    /usr/bin/python /usr/local/bin/HDO-VT.py > /dev/null
+05 06 * * 0,6           root    /usr/bin/python /usr/local/bin/HDO-VT.py > /dev/null
+25 18 * * 0,6           root    /usr/bin/python /usr/local/bin/HDO-VT.py > /dev/null
+00 00 * * 0,6           root    /usr/bin/python /usr/local/bin/HDO-VT.py > /dev/null
