@@ -6,7 +6,7 @@
 # read electric low or high tarif from emonCMS and setting charger and mode to hold batteries fully charged
 # controls grid charging current to meet circuit braker maximum alloweble grid current(power)
 # calculation of CRC is done by XMODEM mode, but in firmware is wierd mistake in POP02 command, so exception of calculation is done in serial_command(command) function
-# real PL2303 = big trouble in my setup, cheap chines converter some times disconnecting, workaround is at the end of serial_command(command) function
+# real PL2303 = big trouble in my setup, cheap chinese converter some times disconnecting, workaround is at the end of serial_command(command) function
 # differenc between SBU(POP02) and Solar First (POP01): in state POP01 inverter works only if PV_voltage <> 0 !!! SBU mode works during night
 
 # Josef Krieglstein 20170215 last update
