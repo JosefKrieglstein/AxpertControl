@@ -12,7 +12,7 @@ server = "emoncms.trenet.org"
 emoncmspath = ""
 
 # Write apikey of emoncms account
-apikey = "53863683c9745504ab727de6f736c94b"
+apikey = "..."
 
 # Node id youd like the emontx to appear as
 nodeid = 14
