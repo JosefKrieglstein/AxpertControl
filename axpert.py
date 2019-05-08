@@ -26,12 +26,13 @@ import usb.core
 import usb.util
 import sys
 import signal
+import time
 from binascii import unhexlify
 #import binascii
 
 # Domain you want to post to: localhost would be an emoncms installation on your own laptop
 # this could be changed to emoncms.org to post to emoncms.org or your own server
-server = "emoncms.trenet.org"
+server = "....org"
 
 #connection = "serial"
 connection = "USB"
@@ -41,14 +42,17 @@ connection = "USB"
 emoncmspath = ""
 
 # Write apikey of emoncms account
-apikey = "...."
+apikey = "..."
 
 # Node id youd like the emontx to appear as
-nodeid0 = 21
+nodeid0 = 23
 #nodeid1 = 22
 
-mode1 = 0
-mode2 = 0
+mode0 = -1
+mode1 = -1
+load = 0
+wake_up_start = 0
+parrallel_num = 0
 
 #Axpert Commands and examples
 #Q1		# Undocumented command: LocalInverterStatus (seconds from absorb), ParaExistInfo (seconds from end of Float), SccOkFlag, AllowSccOnFlag, ChargeAverageCurrent, SCC PWM Temperature, Inverter Temperature, Battery Temperature, Transformer Temperature, GPDAT, FanLockStatus, FanPWMDuty, FanPWM, SCCChargePowerWatts, ParaWarning, SYNFreq, InverterChargeStatus
@@ -118,9 +122,8 @@ ser.dsrdtr = False                  #disable hardware (DSR/DTR) flow control
 ser.writeTimeout = 2                #timeout for write
 
 try:
-#    usb0 = open('/dev/hidraw0', mode = 'rb+', buffering = 32)
-#    usb0 = os.open('/dev/hidraw0', mode='rb+', newline=None)
     usb0 = os.open('/dev/hidraw0', os.O_RDWR | os.O_NONBLOCK)
+    usb1 = os.open('/dev/hidraw1', os.O_RDWR | os.O_NONBLOCK)
 
 except Exception, e:
     print "error open USB port: " + str(e)
@@ -128,17 +131,20 @@ except Exception, e:
 
 def get_data(command,inverter):
     #collect data from axpert inverter
-    mode = -1
-    load = -1
+    global mode0
+    global mode1
+    global load
     status = -1
-    parrallel_num = -1
+    global parrallel_num
+    if inverter == 0: device = usb0
+    if inverter == 1: device = usb1
     try:
     	data = "{"
 	if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
-            response = serial_command(command)
+            response = serial_command(command,device)
 	    if "NAKss" in response or response == '':
                 if connection == "serial": time.sleep(0.2)
-            	return '', '', '', ''
+            	return ''
     	    else:
 		response_num = re.sub ('[^0-9. ]','',response)
 		if command == "QPGS0":
@@ -147,38 +153,39 @@ def get_data(command,inverter):
 		    nums = response_num.split(' ', 99)
             	    nums_mode = response.split(' ', 99)
 		    if nums_mode[2] == "L":
-                	data += "Gridmode:1"
-			data += ",Solarmode:0"
-			mode = 0
+                	data += "Gridmode0:1"
+			data += ",Solarmode0:0"
+			mode0 = 0
             	    elif nums_mode[2] == "B":
-                	data += "Gridmode:0"
-                	data += ",Solarmode:1"
-			mode = 1
+                	data += "Gridmode0:0"
+                	data += ",Solarmode0:1"
+			mode0 = 1
             	    elif nums_mode[2] == "S":
-                	data += "Gridmode:0"
-                	data += ",Solarmode:0"
-			mode = 2
+                	data += "Gridmode0:0"
+                	data += ",Solarmode0:0"
+			mode0 = 2
             	    elif nums_mode[2] == "F":
-                	data += "Gridmode:0"
-                	data += ",Solarmode:0"
-			mode = 3
+                	data += "Gridmode0:0"
+                	data += ",Solarmode0:0"
+			mode0 = 3
         
-		    data += ",The_parallel_num:" + nums[0]
-        	    data += ",Serial_number:" + nums[1]
-        	    data += ",Fault_code:" + nums[3]
-        	    data += ",Load_percentage:" + nums[10]
+		    data += ",The_parallel_num0:" + nums[0]
+        	    data += ",Serial_number0:" + nums[1]
+        	    data += ",Fault_code0:" + nums[3]
+        	    data += ",Load_percentage0:" + nums[10]
         	    data += ",Total_charging_current:" + nums[15]
         	    data += ",Total_AC_output_active_power:" + nums[17]
         	    data += ",Total_AC_output_apparent_power:" + nums[16]
         	    data += ",Total_AC_output_percentage:" + nums[18]
-        	    data += ",Inverter_Status:" + nums[19]
-        	    data += ",Output_mode:" + nums[20]
-        	    data += ",Charger_source_priority:" + nums[21]
-        	    data += ",Max_Charger_current:" + nums[22]
-        	    data += ",Max_Charger_range:" + nums[23]
-        	    data += ",Max_AC_charger_current:" + nums[24]
-		    parrallel_num = nums[0]
-		    load = nums[17]
+        	    data += ",Inverter_Status0:" + nums[19]
+        	    data += ",Output_mode0:" + nums[20]
+        	    data += ",Charger_source_priority0:" + nums[21]
+        	    data += ",Max_Charger_current0:" + nums[22]
+        	    data += ",Max_Charger_range0:" + nums[23]
+        	    data += ",Max_AC_charger_current0:" + nums[24]
+		    data += ",Inverter_mode0:" + str (mode0)
+		    parrallel_num = int (nums[0])
+		    load = int (nums[17])
 
 		elif command == "QPGS1":
             	    response.rstrip()
@@ -188,87 +195,90 @@ def get_data(command,inverter):
 		    if nums_mode[2] == "L":
                 	data += "Gridmode1:1"
 			data += ",Solarmode1:0"
-			mode = 0
+			mode1 = 0
             	    elif nums_mode[2] == "B":
                 	data += "Gridmode1:0"
                 	data += ",Solarmode1:1"
-			mode = 1
+			mode1 = 1
             	    elif nums_mode[2] == "S":
                 	data += "Gridmode1:0"
                 	data += ",Solarmode1:0"
-			mode = 2
+			mode1 = 2
             	    elif nums_mode[2] == "F":
                 	data += "Gridmode1:0"
                 	data += ",Solarmode1:0"
-			mode = 3
+			mode1 = 3
             
 		    data += ",The_parallel_num1:" + nums[0]
         	    data += ",Serial_number1:" + nums[1]
         	    data += ",Fault_code1:" + nums[3]
         	    data += ",Load_percentage1:" + nums[10]
-        	    data += ",Total_charging_current1:" + nums[15]
-        	    data += ",Total_AC_output_active_power1:" + nums[17]
-        	    data += ",Total_AC_output_apparent_power1:" + nums[16]
-        	    data += ",Total_AC_output_percentage1:" + nums[18]
+        	    data += ",Total_charging_current:" + nums[15]
+        	    data += ",Total_AC_output_active_power:" + nums[17]
+        	    data += ",Total_AC_output_apparent_power:" + nums[16]
+        	    data += ",Total_AC_output_percentage:" + nums[18]
         	    data += ",Inverter_Status1:" + nums[19]
         	    data += ",Output_mode1:" + nums[20]
         	    data += ",Charger_source_priority1:" + nums[21]
         	    data += ",Max_Charger_current1:" + nums[22]
         	    data += ",Max_Charger_range1:" + nums[23]
         	    data += ",Max_AC_charger_current1:" + nums[24]
-		    parrallel_num = nums[0]
+		    data += ",Inverter_mode1:" + str (mode1)
+		    parrallel_num = int (nums[0])
+		    load = int (nums[17])
 
 		elif command == "QPIGS":
         	    response_num.rstrip()
         	    nums = response_num.split(' ', 99)
-        	    data += "Grid_voltage:" + nums[0]
-        	    data += ",Grid_frequency:" + nums[1]
-        	    data += ",AC_output_voltage:" + nums[2]
-        	    data += ",AC_output_frequency:" + nums[3]
-        	    data += ",AC_output_apparent_power:" + nums[4]
-        	    data += ",AC_output_active_power:" + nums[5]
-        	    data += ",Output_Load_Percent:" + nums[6]
-        	    data += ",Bus_voltage:" + nums[7]
-        	    data += ",Battery_voltage:" + nums[8]
-        	    data += ",Battery_charging_current:" + nums[9]
-        	    data += ",Battery_capacity:" + nums[10]
-        	    data += ",Inverter_heatsink_temperature:" + nums[11]
-        	    data += ",PV_input_current_for_battery:" + nums[12]
-        	    data += ",PV_Input_Voltage:" + nums[13]
-        	    data += ",Battery_voltage_from_SCC:" + nums[14]
-        	    data += ",Battery_discharge_current:" + nums[15]
-        	    data += ",Device_status:" + nums[16]
+        	    data += "Grid_voltage" + str(inverter) + ":" + nums[0]
+        	    data += ",Grid_frequency" + str(inverter) + ":" + nums[1]
+        	    data += ",AC_output_voltage" + str(inverter) + ":" + nums[2]
+        	    data += ",AC_output_frequency" + str(inverter) + ":" + nums[3]
+        	    data += ",AC_output_apparent_power" + str(inverter) + ":" + nums[4]
+        	    data += ",AC_output_active_power" + str(inverter) + ":" + nums[5]
+        	    data += ",Output_Load_Percent" + str(inverter) + ":" + nums[6]
+        	    data += ",Bus_voltage" + str(inverter) + ":" + nums[7]
+        	    data += ",Battery_voltage" + str(inverter) + ":" + nums[8]
+        	    data += ",Battery_charging_current" + str(inverter) + ":" + nums[9]
+        	    data += ",Battery_capacity" + str(inverter) + ":" + nums[10]
+        	    data += ",Inverter_heatsink_temperature" + str(inverter) + ":" + nums[11]
+        	    data += ",PV_input_current_for_battery" + str(inverter) + ":" + nums[12]
+        	    data += ",PV_Input_Voltage" + str(inverter) + ":" + nums[13]
+        	    data += ",Battery_voltage_from_SCC" + str(inverter) + ":" + nums[14]
+        	    data += ",Battery_discharge_current" + str(inverter) + ":" + nums[15]
+        	    data += ",Device_status" + str(inverter) + ":" + nums[16]
 
 		elif command == "Q1":
         	    response_num.rstrip()
         	    nums = response_num.split(' ', 99)
-        	    data += "SCCOkFlag:" + nums[2]
-        	    data += ",AllowSCCOkFlag:" + nums[3]
-        	    data += ",ChargeAverageCurrent:" + nums[4]
-        	    data += ",SCCPWMTemperature:" + nums[5]
-        	    data += ",InverterTemperature:" + nums[6]
-        	    data += ",BatteryTemperature:" + nums[7]
-        	    data += ",TransformerTemperature:" + nums[8]
-        	    data += ",GPDAT:" + nums[9]
-        	    data += ",FanLockStatus:" + nums[10]
-        	    data += ",FanPWM:" + nums[12]
-        	    data += ",SCCChargePower:" + nums[13]
-        	    data += ",ParaWarning:" + nums[14]
-		    data += ",InverterChargeStatus:" + nums[16]
+        	    data += "SCCOkFlag" + str(inverter) + ":" + nums[2]
+        	    data += ",AllowSCCOkFlag" + str(inverter) + ":" + nums[3]
+        	    data += ",ChargeAverageCurrent" + str(inverter) + ":" + nums[4]
+        	    data += ",SCCPWMTemperature" + str(inverter) + ":" + nums[5]
+        	    data += ",InverterTemperature" + str(inverter) + ":" + nums[6]
+        	    data += ",BatteryTemperature" + str(inverter) + ":" + nums[7]
+        	    data += ",TransformerTemperature" + str(inverter) + ":" + nums[8]
+        	    data += ",GPDAT" + str(inverter) + ":" + nums[9]
+        	    data += ",FanLockStatus" + str(inverter) + ":" + nums[10]
+        	    data += ",FanPWM" + str(inverter) + ":" + nums[12]
+        	    data += ",SCCChargePower" + str(inverter) + ":" + nums[13]
+        	    data += ",ParaWarning" + str(inverter) + ":" + nums[14]
+		    data += ",InverterChargeStatus" + str(inverter) + ":" + nums[16]
 
 		elif command == "QBV":
         	    response_num.rstrip()
         	    nums = response_num.split(' ', 99)
-		    data += "Battery_voltage_compensated:" + nums[0]
-		    data += ",SoC:" + nums[1]
-		else: return '', '', '', ''
+		    data += "Battery_voltage_compensated" + str(inverter) + ":" + nums[0]
+		    data += ",SoC" + str(inverter) + ":" + nums[1]
+		else: return ''
 		data += "}"
 
     except Exception, e:
             print "error parsing inverter data...: " + str(e)
-            return '', '', '', ''
+	    print "problem command: " + command +": " + response
+            return ''
 
-    return data, parrallel_num, load, mode
+    return data
 
 def set_charge_current():
     # Automaticly adjust axpert inverter grid charging current
@@ -283,14 +293,14 @@ def set_charge_current():
 	if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
             current = 0
             load_power = 0
-            response = serial_command("QPGS0")
+            response = serial_command("QPGS0",usb0)
             if "NAKss" in response:
 		if connection == "serial": time.sleep(0.5)
                 return ''
             response.rstrip()
             nums = response.split(' ', 99)
             current = int ( nums[24] )
-            response = serial_command("QPIGS")
+            response = serial_command("QPIGS",usb0)
             if "NAKss" in response:
 		if connection == "serial": time.sleep(0.5)
                 return ''
@@ -301,19 +311,19 @@ def set_charge_current():
             if load_power > 3000:
                 if not current == 2:
                     current = 2
-                    response = serial_command("MUCHGC002")
+                    response = serial_command("MUCHGC002",usb0)
             elif load_power > 2000:
                 if not current == 10:
                     current = 10
-                    response = serial_command("MUCHGC010")
+                    response = serial_command("MUCHGC010",usb0)
             elif load_power > 1000:
                 if not current == 20:
                     current = 20
-                    response = serial_command("MUCHGC020")
+                    response = serial_command("MUCHGC020",usb0)
             else:
                 if not current == 30:
                     current = 30
-                    response = serial_command("MUCHGC030")
+                    response = serial_command("MUCHGC030",usb0)
             print current
             if "NAKss" in response:
                 if connection == "serial": time.sleep(0.5)
@@ -335,7 +345,7 @@ def get_output_source_priority():
     output_source_priority = "8"
     try:
 	if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
-            response = serial_command("QPIRI")
+            response = serial_command("QPIRI",usb0)
             if "NAKss" in response:
                 if connection == "serial": time.sleep(0.5)
                 return ""
@@ -359,7 +369,7 @@ def get_charger_source_priority():
     charger_source_priority = "8"
     try:
 	if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
-            response = serial_command("QPIRI")
+            response = serial_command("QPIRI",usb0)
             if "NAKss" in response:
                 if connection == "serial": time.sleep(0.5)
                 return ""
@@ -384,13 +394,13 @@ def set_output_source_priority(output_source_priority):
     	    try:
 		if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
                     if output_source_priority == 0:
-                        response = serial_command("POP00")
+                        response = serial_command("POP00",usb0)
                         print response
                     elif output_source_priority == 1:
-                        response = serial_command("POP01")
+                        response = serial_command("POP01",usb0)
                         print response
                     elif output_source_priority == 2:
-                        response = serial_command("POP02")
+                        response = serial_command("POP02",usb0)
                         print response
 
     		elif ( connection == "serial" ):
@@ -411,16 +421,16 @@ def set_charger_source_priority(charger_source_priority):
 		if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
 
                     if charger_source_priority == 0:
-                        response = serial_command("PCP00")
+                        response = serial_command("PCP00",usb0)
                         print response
                     elif charger_source_priority == 1:
-                        response = serial_command("PCP01")
+                        response = serial_command("PCP01",usb0)
                         print response
                     elif charger_source_priority == 2:
-                        response = serial_command("PCP02")
+                        response = serial_command("PCP02",usb0)
                         print response
                     elif charger_source_priority == 3:
-                        response = serial_command("PCP03")
+                        response = serial_command("PCP03",usb0)
                         print response
 
     		elif ( connection == "serial" ):
@@ -439,8 +449,6 @@ def send_data(data):
     try:
         conn = httplib.HTTPConnection(server)
 	conn.request("GET", "/"+emoncmspath+"/input/post.json?&node="+str(nodeid0)+"&json="+data+"&apikey="+apikey)
-#	if inverter == 0: conn.request("GET", "/"+emoncmspath+"/input/post.json?&node="+str(nodeid0)+"&json="+data+"&apikey="+apikey)
-#	if inverter == 1: conn.request("GET", "/"+emoncmspath+"/input/post.json?&node="+str(nodeid1)+"&json="+data+"&apikey="+apikey)
         response = conn.getresponse()
         conn.close()
 
@@ -466,7 +474,7 @@ def read_hdo(id):
     return 1
 
 
-def serial_command(command):
+def serial_command(command,device):
     try:
 	response = ""
 	xmodem_crc_func = crcmod.predefined.mkCrcFun('xmodem')
@@ -479,18 +487,19 @@ def serial_command(command):
 	signal.alarm(10)
 	if len (command_crc) < 9:
 	    time.sleep (0.35)
-	    os.write(usb0, command_crc)
+	    os.write(device, command_crc)
+	    
 	else:
 	    cmd1 = command_crc[:8]
 	    cmd2 = command_crc[8:]
 	    time.sleep (0.35)
-	    os.write(usb0, cmd1)
+	    os.write(device, cmd1)
 	    time.sleep (0.35)
-	    os.write(usb0, cmd2)
+	    os.write(device, cmd2)
 	    time.sleep (0.25)
 	while True:
 	    time.sleep (0.15)
-	    r = os.read(usb0, 256)
+	    r = os.read(device, 256)
 	    response += r
 	    if '\r' in r: break
 
@@ -510,7 +519,7 @@ def serial_command(command):
     print response
     return response
 
-def dynamic_control(load, mode1, mode2):
+def dynamic_control():
     # Automaticly adjust axpert inverter wakeup and standby mode
     #0:Line mode
     #1:Battery mode
@@ -518,55 +527,65 @@ def dynamic_control(load, mode1, mode2):
     #3:Fault mode
     #-1: Unknown mode
     # load > 1800 W -> Both inverters UP
-    # load < 1800 W -> Master Running Slave in standby
+    # load < 1500 W -> Master Running Slave in standby
+    # minimum time to run 5 minutes = 300 seconds
+    global wake_up_start
+    global mode0
+    global mode1
+    global load
     response = " no command "
+    time_tmp = (time.time() - wake_up_start)
     try:
-	load = int(load)
-	print "Load: " + str(load) + " MODE: " + str (mode1) + "|"  + str(mode2)
-	if (load < 1800 and mode1 == 1 and mode2 == 1):
+	print "Load: " + str(load) + " W, MODE: " + str (mode0) + "|"  + str(mode1) + ", time: " + str (int(time_tmp)) + " seconds"
+	if (load < 1500 and mode0 == 1 and mode1 == 1 and time_tmp > 300):
             print "Second inverter go to standby mode"
-	    response = serial_command("MNCHGC1497")
-        elif (load > 1800 and mode1 == 1 and mode2 == 2):
+	    response = serial_command("MNCHGC1497",usb0)
+        elif (load < 1500 and mode0 == 1 and mode1 == 1 and time_tmp < 300):
+            print "waiting 5 minutes to be sure that inverter could go sleep"
+	elif (load > 1800 and mode0 == 1 and mode1 == 2):
 	    print "Second Inverter wake up"
-            response = serial_command("MNCHGC1498")
-        elif (load < 1800 and mode1 == 1 and mode2 == 2):
+            response = serial_command("MNCHGC1498",usb0)
+	    wake_up_start = time.time()
+        elif (load < 1800 and mode0 == 1 and mode1 == 2):
 	    print "Second inverter already sleeping"
-        elif (load > 1800 and mode1 == 1 and mode2 == 1):
-	    print "Both inverter working"
+        elif (load > 1800 and mode0 == 1 and mode1 == 1):
+	    print "Both inverters running"
         else:
 	    print "No idea what to do"
         if "NAKss" in response:
 	    print "Inverter didn't recognized command"
-            return ''
+            return
 
     except Exception, e:
             print "error setting inverter mode...: " + str(e)
-            return ''
+            return
 
     return 1
 
 def main():
+    global mode0
+    global mode1
+    global parrallel_num
+    global wake_up_start
+    global load
+    wake_up_start = time.time()
     while True:
-# Inverter 0
-        inverter = 0
-	data, tmp, tmp2, tmp3 = get_data("QBV",inverter)
-        if not data == "": send = send_data(data)
-	data, tmp, tmp2, tmp3 = get_data("Q1",inverter)
-        if not data == "": send = send_data(data)
-	data, tmp, tmp2, tmp3 = get_data("QPIGS", inverter)
-        if not data == "": send = send_data(data)
-	data, parrallel_num, load, mode1 = get_data("QPGS0", inverter)
-        if not data == "": send = send_data(data)
-
-# Inverter 1
-	if parrallel_num == "1":
-	    inverter = 1
-	    data, tmp, tmp2, mode2 = get_data("QPGS1", inverter)
+	for inverter in range (0, 2):
+	    if (inverter == 1 and parrallel_num < 1): break
+	    data = get_data("QBV",inverter)
     	    if not data == "": send = send_data(data)
-
-# sleeping
-	if (load > "0" and mode1 >= 0 and mode2 >= 0 and parrallel_num == "1"):
-	    dynamic_control(load, mode1, mode2)
+	    data = get_data("Q1",inverter)
+    	    if not data == "": send = send_data(data)
+	    data = get_data("QPIGS", inverter)
+    	    if not data == "": send = send_data(data)
+	    if inverter == 0:
+		data = get_data("QPGS0", inverter)
+    		if not data == "": send = send_data(data)
+	    elif inverter == 1:
+		data = get_data("QPGS1", inverter)
+    		if not data == "": send = send_data(data)
+	    if (load > 0 and mode0 >= 0 and mode1 >= 0 and parrallel_num == 1):
+		dynamic_control()
 
 #        charge_current = set_charge_current ()
 #        hdo_tmp_LT = read_hdo(68)       #Read emoncms feed id=68 = LowTarif
@@ -590,4 +609,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
